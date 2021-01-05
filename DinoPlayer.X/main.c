@@ -1,9 +1,9 @@
 /*
  * DinoPlayer
- * Chrome Dino game
+ * Chrome Dino game (Highscore 722 with this version)
  * Servo with LDR sensor using ATmega4809
  * Author: Saku Linnankoski sjlinn@utu.fi
- * v1.4
+ * version: 1.5
 */
 
 #include <avr/io.h>
@@ -17,12 +17,17 @@
 /* Adjustable angle for servo down to space key*/
 #define SERVO_DOWN (0x0104)
 /* Adjustable threshold for LDR detection*/
-#define LIGHT_THRESHOLD (0x258)
+#define LIGHT_THRESHOLD (0x200)
 
 /* LDR value*/
-uint16_t lightLevel;
+volatile uint16_t ldrValue;
 
-void ADC0init(void)
+void ADC0_init(void);
+uint16_t ADC0_read(void);
+void ADC0_start(void);
+void SERVO_init(void);
+
+void ADC0_init(void)
 {
     /* Disable digital input buffer*/
     PORTD.DIRCLR = PIN0_bm;
@@ -33,23 +38,28 @@ void ADC0init(void)
     
     /* Enable (power up) ADC (10-bit resolution is default)*/
     ADC0.CTRLA |= ADC_ENABLE_bm;
+    
+    /* Enable FreeRun mode */
+    ADC0.CTRLA |= ADC_FREERUN_bm;
+    
+    /* Enable interrupts */
+    ADC0.INTCTRL |= ADC_RESRDY_bm;
 }
 
 uint16_t ADC0_read(void)
 {
-    /* Clear the interrupt flag by writing 1*/
+    /* Clear ADC interrupt flag*/
     ADC0.INTFLAGS = ADC_RESRDY_bm;
-    
     return ADC0.RES;
 }
 
 void ADC0_start(void)
 {
-    /* Start conversion*/
+    /* Start conversion */
     ADC0.COMMAND = ADC_STCONV_bm;
 }
 
-void SERVOinit(void)
+void SERVO_init(void)
 {
     /* Route TCA0 PWM waveform to PORTB*/
     PORTMUX.TCAROUTEA |= PORTMUX_TCA0_PORTB_gc;
@@ -76,47 +86,49 @@ void SERVOinit(void)
     TCA0.SINGLE.CTRLA |= TCA_SINGLE_ENABLE_bm;
 }
 
+ISR(ADC0_RESRDY_vect)
+{
+    
+    /* Read the LDR ADC value*/
+    ldrValue = ADC0_read();
+    
+    if(ldrValue < LIGHT_THRESHOLD)
+    {
+        /* LED off*/
+        PORTF.OUTSET |= PIN5_bm;
+        /* SERVO in up position when LDR under threshold*/
+        TCA0.SINGLE.CMP2BUF = SERVO_PWM_DUTY_NEUTRAL;
+    }
+    else
+    {
+        /* LED on*/
+        PORTF.OUTCLR |= PIN5_bm;
+        /* When LDR value over threshold put servo in down position*/
+        TCA0.SINGLE.CMP2BUF = SERVO_DOWN;
+        _delay_ms(500);
+    }
+    
+    /*Clear ADC interrupt flag*/
+    ADC0.INTFLAGS = ADC_RESRDY_bm;
+}
+
 int main(void)
 {
-    /* Clear the global interrupt flag*/
+    /*Disable global interrupts*/
     cli();
     
-    /* Initialize LDR ADC, SERVO and LED*/
-    ADC0init();
-    SERVOinit();
+    /* ADC, SERVO and LED initialization*/
+    ADC0_init();
+    SERVO_init();
     PORTF.DIRSET = PIN5_bm;
     
-    /* Enable interrupts*/
+    ADC0_start();
+    
+    /* Enable global interrupts*/
     sei();
     
     while (1)
     {
-        /* Start LDR ADC*/
-        ADC0_start();
-        
-        /* Read the LDR ADC value*/
-        lightLevel = ADC0_read();
-        
-        while (!(ADC0.INTFLAGS & ADC_RESRDY_bm))
-        {
-            /* Blink LED if LDR threshold detected*/
-            PORTF.OUTTGL = PIN5_bm;
-            
-            if(lightLevel < LIGHT_THRESHOLD)
-            {
-                /* SERVO in up position when LDR under threshold*/
-                TCA0.SINGLE.CMP2BUF = SERVO_PWM_DUTY_NEUTRAL;
-            }
-            
-            else
-            {
-                /* If LDR value over threshold put servo in down position*/
-                TCA0.SINGLE.CMP2BUF = SERVO_DOWN;
-                _delay_ms(500);
-            }
-        }
-        
-        /* Must clear ADC interrupt flag for next ADC read*/
-        ADC0.INTFLAGS = ADC_RESRDY_bm;
+            ;
     }
 }
