@@ -3,7 +3,7 @@
  * Chrome Dino game (Highscore 722 with this version)
  * Servo with LDR sensor using ATmega4809
  * Author: Saku Linnankoski sjlinn@utu.fi
- * version: 1.5
+ * version: 1.6
 */
 
 #include <avr/io.h>
@@ -20,7 +20,7 @@
 #define LIGHT_THRESHOLD (0x200)
 
 /* LDR value*/
-volatile uint16_t ldrValue;
+uint16_t ldrValue;
 
 void ADC0_init(void);
 uint16_t ADC0_read(void);
